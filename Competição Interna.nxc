@@ -1,0 +1,179 @@
+//MACROS DE PORTA DE SENSORES
+#define S_GARRA IN_3
+#define S_DIREITA IN_2
+#define S_ESQUERDA IN_4
+#define S_ULTRA IN_1
+
+//MACROS DE CONSTANTES DE COMPARAÇÃO DE LEITURAS DE SENSORES
+#define COR_LINHA 28
+#define COR_CHAO 45
+#define COR_BONECO 15
+#define COR_AZUL 3
+#define COR_RED 7
+#define COR_VERDE 13
+#define DISTANCIA_RESGASTE 10
+#define DISTANCIA_OBSTACULO 10
+
+//MACROS DE PORTA DE MOTORES
+#define M_DIREITA OUT_A
+#define M_GARRA OUT_B
+#define M_ESQUERDA OUT_C
+
+//MACROS DE CONSTANTES USADAS NOS MOTORES
+#define POTENCIA_USUAL -56
+#define POTENCIA_GARRA 10
+#define FATOR_ESQUERDA 90
+#define FATOR_DIREITA 90
+#define RESET_ALL 0x68
+#define RAIO_RODA 2.45
+#define RAIO_ROBO 6.8
+
+//MACRO EM FUNÇÕES
+#define TAMANHO_OBSTACULO 25
+
+//MACROS DE TEMPOS DE ESPERA
+#define TEMPO_LINHA 300
+#define TEMPO_GARRA 600
+#define TEMPO_VIRA 600
+
+
+//LEITURAS DE SENSORES
+inline bool sensorLuzNaEsquerda        (){return (Sensor  (S_DIREITA)  > COR_CHAO) && (Sensor (S_ESQUERDA) < COR_LINHA);}
+inline bool sensorLuzNaDireita         (){return (Sensor  (S_ESQUERDA) > COR_CHAO) && (Sensor (S_DIREITA)  < COR_LINHA);}
+inline bool sensorLuzEmAmbas           (){return (Sensor  (S_ESQUERDA) < COR_LINHA)&& (Sensor (S_DIREITA)  < COR_LINHA);}
+inline bool sensorLuzNaEsquerdaSimples (){return (Sensor  (S_ESQUERDA) < COR_LINHA );}
+inline bool sensorLuzNaDireitaSimples  (){return (Sensor  (S_DIREITA)  < COR_LINHA );}
+inline bool sensorUltraSomAvistou (int D){return (SensorUS(S_ULTRA)    < D         );}
+inline bool sensorVerificaCorBoneco    (){return (SensorUS(S_GARRA)    < COR_BONECO);}
+
+//AÇÕES COM MOTORES
+inline void abreGarra(){
+            OnFwd (M_GARRA , POTENCIA_GARRA);
+            Wait  (TEMPO_GARRA);}
+inline void fechaGarra(){
+            OnRev (M_GARRA , POTENCIA_GARRA+10);
+            Wait  (TEMPO_GARRA+1000);}
+void reto (int cm) {
+            ResetAllTachoCounts (OUT_AC);
+            RotateMotorEx (OUT_AC, 60, 83*(cm/RAIO_RODA), 0, true, false);}
+safecall void entao_corrijaParaEsquerda (){
+            OnFwd (M_DIREITA, -FATOR_ESQUERDA);
+            OnFwd (M_ESQUERDA, FATOR_DIREITA);
+            Wait  (TEMPO_LINHA);}
+safecall void entao_corrijaParaDireita (){
+            OnFwd (M_ESQUERDA, -FATOR_DIREITA);
+            OnFwd (M_DIREITA, FATOR_ESQUERDA);
+            Wait  (TEMPO_LINHA);}
+sub entao_resgaste (){
+            TextOut (0, LCD_LINE2, "Resgastando");
+            OnRevSync (OUT_AC, 70, 0);
+            until (sensorUltraSomAvistou (DISTANCIA_RESGASTE));
+            OnRevSync (OUT_AC, 30, 0);
+            Wait (1000);
+            Float (OUT_AC);
+            if (sensorVerificaCorBoneco ()){
+                  fechaGarra();
+                  reto (-5);
+                  Float (OUT_AC);
+                  abreGarra();
+                  StopAllTasks();}
+            else {
+                  reto (5);
+                  Float (OUT_AC);
+                  StopAllTasks();}}
+sub entao_desvie (){
+            TextOut (0, LCD_LINE2, "Desviando");
+
+            OnFwd (OUT_AC, 80);
+            Wait (500);
+
+            //vira para esquerda
+            OnFwd (OUT_A, -60);
+            OnFwd (OUT_C,  60);
+            Wait (1000);
+
+            //vai em frente
+            OnRevSync (OUT_AC, 60, 0);
+            Wait (2000);
+
+            //vira para direita
+            OnFwd (OUT_A,  60);
+            OnFwd (OUT_C, -60);
+            Wait (TEMPO_VIRA);
+
+            //vai em frente
+            OnRevSync (OUT_AC, 60, 0);
+            Wait (2000);
+
+            //vira direita
+            OnFwd (OUT_A, 60);
+            OnFwd (OUT_C, -60);
+            Wait (TEMPO_VIRA);
+            //vai em frente
+            OnRevSync (OUT_AC, 60, 0);
+             //alinha
+            until (!sensorLuzNaDireitaSimples ());
+            OnFwd (OUT_A,  -60);
+            OnFwd (OUT_C, -10);
+            until (!sensorLuzNaEsquerdaSimples());}
+sub JustDoIt (){
+            TextOut (0, LCD_LINE2, "Seguindo");
+
+             //MUITO NA ESQUERDA
+            while (sensorLuzNaDireita ()){
+                  if (sensorUltraSomAvistou (DISTANCIA_OBSTACULO)){
+                        entao_desvie();
+                        break;}
+                  entao_corrijaParaDireita ();}
+            //MUITA NA DIREITA
+            while (sensorLuzNaEsquerda ()){
+                  if (sensorUltraSomAvistou (DISTANCIA_OBSTACULO)){
+                        entao_desvie();
+                        break;}
+                  entao_corrijaParaEsquerda ();}
+            //OBSTACULO
+            if (sensorUltraSomAvistou (DISTANCIA_OBSTACULO)){
+                  entao_desvie();}
+
+            //VERIFICA RESGASTE
+            if (sensorLuzEmAmbas ()){
+                  if (!sensorUltraSomAvistou (DISTANCIA_RESGASTE+10)){
+                     int A = (Random () %2)*90, B = (Random ()%2)*90;
+                     if (A>0&&B>0) B = -B;
+                     OnFwd (OUT_A, A);
+                     OnFwd (OUT_C, B);
+                     Wait (300);
+                     Float (OUT_AC);
+                     Wait (2);
+                     OnRev (OUT_AC, POTENCIA_USUAL-10);
+                     Wait (400);}
+                  else
+                     {entao_resgaste ();}}
+
+            //RESETA POTENCIA
+            OnFwd (OUT_AC, POTENCIA_USUAL);}
+
+inline void printLeituraDosSensores (){
+            TextOut(0, LCD_LINE1, "---STATUS---");
+            TextOut(0, LCD_LINE3, "Sensores");
+            TextOut(0, LCD_LINE4, "E"); NumOut (10, LCD_LINE4, Sensor(S_ESQUERDA));
+            TextOut(20, LCD_LINE4,"D"); NumOut (30, LCD_LINE4, Sensor(S_DIREITA));
+            TextOut(40, LCD_LINE4,"G"); NumOut (50, LCD_LINE4, SensorUS(S_GARRA));
+            TextOut(60, LCD_LINE4,"U"); NumOut (70, LCD_LINE4, SensorUS(S_ULTRA));}
+
+sub setSensores (){
+            SetSensorLight (S_DIREITA);
+            SetSensorLight (S_ESQUERDA);
+            SetSensorLowspeed (S_ULTRA);
+            SetSensorLowspeed (S_GARRA);}
+
+sub robo_Musculo_Eu_Escolho_VOCE(){
+            setSensores ();
+            OnFwd (OUT_AC, POTENCIA_USUAL);
+            while(true){
+                  printLeituraDosSensores ();
+                  JustDoIt();
+                  ClearScreen();}}
+
+task main (){
+     robo_Musculo_Eu_Escolho_VOCE();}
